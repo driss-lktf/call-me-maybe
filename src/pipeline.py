@@ -76,7 +76,7 @@ class FunctionCallingPipeline:
         try:
             value = json.loads(f'"{content}"')
         except json.JSONDecodeError:
-            return content
+            return content.lstrip()
         if isinstance(value, str):
-            return value
-        return content
+            return value.lstrip()
+        return content.lstrip()

@@ -53,7 +53,7 @@ By default the program reads:
 
 and writes:
 
-* `data/output/function_calls.json`
+* `data/output/function_calling_results.json`
 
 You can override these paths:
 
@@ -61,7 +61,7 @@ You can override these paths:
 uv run python -m src \
     --functions_definition data/input/functions_definition.json \
     --input data/input/function_calling_tests.json \
-    --output data/output/function_calls.json
+    --output data/output/function_calling_results.json
 ```
 
 ### Debug
@@ -215,8 +215,8 @@ The project is validated in three ways:
 
 1. **End-to-end run** on the provided test file
    `data/input/function_calling_tests.json`, with manual inspection of
-   the produced `data/output/function_calls.json`. The output file is
-   re-validated by `json.loads` to confirm structural validity.
+   the produced `data/output/function_calling_results.json`. The output
+   file is re-validated by `json.loads` to confirm structural validity.
 2. **Schema validation via Pydantic.** Every produced record passes
    through `FunctionCall.model_validate` before being written.
 3. **Unit checks of the FSMs** (`src/grammar.py`) by direct calls in a
@@ -227,7 +227,7 @@ To re-validate manually after a run:
 
 ```sh
 uv run python -c \
-    'import json; print(json.load(open("data/output/function_calls.json")))'
+    'import json; print(json.load(open("data/output/function_calling_results.json")))'
 ```
 
 ## Example usage
@@ -242,7 +242,7 @@ Input file `data/input/function_calling_tests.json`:
 ]
 ```
 
-Output file `data/output/function_calls.json` (illustrative):
+Output file `data/output/function_calling_results.json` (illustrative):
 
 ```json
 [

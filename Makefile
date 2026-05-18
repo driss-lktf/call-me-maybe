@@ -1,6 +1,6 @@
 .PHONY: install run debug clean lint lint-strict test help
 
-UV ?= uv
+UV ?= $(shell which uv 2>/dev/null || echo /opt/pyenv/versions/3.11.15/bin/uv)
 SRC := src
 
 help:

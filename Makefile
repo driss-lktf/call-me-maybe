@@ -22,7 +22,10 @@ install:
 	$(UV) sync
 
 run:
-	$(UV) run python -m $(SRC)
+	$(UV) run python -m $(SRC) $(ARGS)
+
+verbose:
+	$(UV) run python -m $(SRC) --verbose
 
 debug:
 	$(UV) run python -m pdb -m $(SRC)

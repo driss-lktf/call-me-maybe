@@ -85,6 +85,90 @@ make lint-strict # flake8 + mypy --strict (optional)
 make clean
 ```
 
+## Bonus features
+
+### Custom BPE tokenizer (`src/tokenizer.py`)
+
+The `BPETokenizer` class reimplements `encode()` and `decode()` from scratch
+using only the vocabulary JSON returned by the SDK's
+`get_path_to_tokenizer_file()`.  The module:
+
+* Builds the byte↔unicode table identical to GPT-2/tiktoken.
+* Loads merge rules from the `"model"."merges"` array in `tokenizer.json`.
+* Splits text at special-token boundaries before running BPE.
+* Provides `decoded_str(token_id)` — the fast inverse path used by the
+  decoder to turn token IDs into human-readable strings without calling
+  the SDK's `decode()`.
+
+The decoder integrates the custom tokenizer in two ways:
+1. **Vocabulary building** — instead of calling `decode([tid])` ~152 k
+   times (~60 s), it reads `tokenizer.json` once and maps every token ID
+   through `decoded_str()`.  This reduces start-up time to under a second
+   on the first run.
+2. **Encoding prompts** — `encode()` is called instead of the SDK's
+   tokenizer, with the SDK as a fallback for safety.
+
+The encode/decode integration with constrained decoding is demonstrated in
+`src/decoder.py`: `force_emit()` tokenises literal JSON markers via the
+custom tokeniser, and the vocabulary table built from it is what the
+constraint engine scans at every generation step.
+
+### Vocabulary disk cache (`src/cache.py`)
+
+After the first run the decoded vocabulary list is saved to
+`~/.cache/call_me_maybe/vocab_<model>.json`.  Subsequent runs load it in
+milliseconds, skipping both the SDK decode loop and the tokenizer-JSON
+read.  Use `--no-cache` to bypass this.
+
+### Generation visualiser (`src/visualizer.py`, `--verbose`)
+
+Pass `--verbose` to print a live trace of constrained decoding to *stderr*:
+each step shows the top-k candidate tokens and their logit scores, the
+token that was chosen, and the number of tokens kept by the mask.
+
+```
+────────────────────────────────────────────────
+[viz] "What is the sum of 2 and 3?"
+────────────────────────────────────────────────
+  step   1 | fn_name        | built=''          valid=3/152064
+       5.123  'fn_add_numbers'  <--
+       1.234  'fn_greet'
+      -0.456  'fn_reverse_string'
+```
+
+### Comprehensive test suite (`tests/`)
+
+Run with `make test` (or `pytest tests/ -v`).  Four modules:
+
+| File | What it tests |
+|---|---|
+| `test_grammar.py` | Number and string FSMs (26 cases) |
+| `test_tokenizer.py` | Byte encoder, BPE merges, encode/decode (19 cases) |
+| `test_decoder.py` | Constrained primitives with a mock model (13 cases) |
+| `test_pipeline.py` | Schemas, CLI loaders, cache, visualiser (16 cases) |
+
+The LLM is never loaded during testing; a `MockModel` in `conftest.py`
+provides deterministic logits.
+
+### Nested / complex parameter types (bonus schema + pipeline)
+
+`ParameterSchema` now supports:
+* `type: "object"` with a `properties` dict of sub-schemas — generates a
+  nested JSON object by recursively calling the value generator.
+* `type: "array"` with an `items` sub-schema — the model is asked after
+  each element whether to continue (`", "`) or close (`"]"`).
+
+### Multiple model support
+
+Any Hugging Face causal-LM can be loaded via `--model`:
+
+```sh
+uv run python -m src --model meta-llama/Llama-3.2-1B
+```
+
+The custom tokeniser and cache are keyed on the model name, so different
+models maintain separate vocabulary caches.
+
 ## Algorithm
 
 ### High-level pipeline
@@ -152,15 +236,22 @@ construction.
 ## Design decisions
 
 * **Public-API only.** The decoder uses `Small_LLM_Model.encode`,
-  `decode` and `get_logits_from_input_ids`. No private SDK attribute
-  is touched.
+  `decode`, `get_logits_from_input_ids` and `get_path_to_tokenizer_file`.
+  No private SDK attribute is touched.
+* **Custom tokenizer as primary path.** `src/tokenizer.py` implements a
+  full byte-level BPE tokenizer that reads `tokenizer.json` directly.
+  It provides `encode()`, `decode()`, and `decoded_str(token_id)`.  The
+  decoder uses it for both prompt encoding and vocabulary construction;
+  the SDK tokenizer is the fallback.
+* **Vocabulary built from JSON, not decode calls.** `decoded_str()` maps
+  IDs to strings in O(1) by inverting the JSON vocabulary — no loop of
+  152 k `decode([tid])` calls needed.
 * **Pydantic at both ends.** Function definitions, test prompts and
   produced function calls are all validated by Pydantic models defined
-  in `src/schemas.py`.
+  in `src/schemas.py`.  `ParameterSchema` now also handles `object` and
+  `array` types for nested argument generation.
 * **Single LLM load per run.** `FunctionCallingPipeline` builds the
-  model once and reuses it for every prompt. The vocabulary (one
-  decoded string per token ID) is built lazily on the first
-  constrained step and cached in memory.
+  model once and reuses it for every prompt.
 * **Per-prompt error isolation.** Any exception while processing one
   prompt is caught, logged on stderr and recorded as an `error` entry
   in the output array; the rest of the batch keeps running.
@@ -171,12 +262,13 @@ construction.
 
 ## Performance analysis
 
-On an Apple-silicon Mac using the MPS backend, a typical run looks
-like:
+On a CPU-only machine, a typical run with the bonus optimisations:
 
-* Model loading and first forward pass: ~10 s.
-* Vocabulary decode (~152 k tokens, decoded one at a time): ~60–90 s
-  on the first pipeline call. This dominates the start-up time.
+* Model loading: ~10–20 s (unchanged).
+* Vocabulary initialisation — **first run**:
+  * Without bonuses (SDK decode loop): 60–90 s.
+  * With `BPETokenizer` from `tokenizer.json`: **< 1 s**.
+* Vocabulary initialisation — **subsequent runs** (disk cache): < 0.1 s.
 * Per-prompt constrained generation: 1–5 s, mostly determined by the
   number of value tokens to produce.
 * The full eleven-prompt benchmark fits comfortably under the 5-minute
@@ -211,26 +303,60 @@ in the correct types declared in `functions_definition.json`.
 
 ## Testing strategy
 
-The project is validated in three ways:
+The project is validated at four levels:
 
-1. **End-to-end run** on the provided test file
+1. **Automated unit tests** — `make test` runs 85 pytest cases covering
+   the grammar FSMs, custom BPE tokenizer, constrained-decoder primitives,
+   schema validation, CLI loaders, disk cache, and visualiser.  The LLM
+   is never loaded; a `MockModel` in `tests/conftest.py` provides
+   deterministic logits.
+2. **End-to-end run** on the provided test file
    `data/input/function_calling_tests.json`, with manual inspection of
    the produced `data/output/function_calling_results.json`. The output
    file is re-validated by `json.loads` to confirm structural validity.
-2. **Schema validation via Pydantic.** Every produced record passes
+3. **Schema validation via Pydantic.** Every produced record passes
    through `FunctionCall.model_validate` before being written.
-3. **Unit checks of the FSMs** (`src/grammar.py`) by direct calls in a
-   Python REPL during development — for instance `number_consume("3")`
-   should accept the string and reach a terminal state.
-
-To re-validate manually after a run:
+4. **Verbose mode for manual tracing.** `--verbose` prints the top-k
+   candidate tokens and logit scores at each constrained step, making
+   it easy to spot cases where the model consistently prefers the wrong
+   function or a malformed value.
 
 ```sh
+# Run the test suite
+make test
+
+# Re-validate output JSON after a run
 uv run python -c \
     'import json; print(json.load(open("data/output/function_calling_results.json")))'
 ```
 
 ## Example usage
+
+```sh
+# Default run (Qwen3-0.6B, disk-cached vocab, no trace)
+uv run python -m src
+
+# Custom paths
+uv run python -m src \
+    --functions_definition data/input/functions_definition.json \
+    --input data/input/function_calling_tests.json \
+    --output data/output/function_calling_results.json
+
+# Live trace (shows top-5 tokens at each constrained step)
+uv run python -m src --verbose
+
+# Wider trace window
+uv run python -m src --verbose --top-k 10
+
+# Disable vocabulary cache (rebuild from tokenizer.json every run)
+uv run python -m src --no-cache
+
+# Use a different model
+uv run python -m src --model microsoft/phi-2
+
+# Run tests (no LLM required)
+make test
+```
 
 Input file `data/input/function_calling_tests.json`:
 

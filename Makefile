@@ -1,4 +1,4 @@
-.PHONY: install run debug clean lint lint-strict help
+.PHONY: install run debug clean lint lint-strict test help
 
 UV ?= uv
 SRC := src
@@ -11,6 +11,7 @@ help:
 	@echo "  clean        - remove caches and build artefacts"
 	@echo "  lint         - flake8 + mypy with the project flags"
 	@echo "  lint-strict  - flake8 + mypy --strict (optional)"
+	@echo "  test         - run the pytest test suite"
 
 install:
 	$(UV) sync
@@ -35,3 +36,6 @@ lint:
 lint-strict:
 	$(UV) run flake8 .
 	$(UV) run mypy . --strict
+
+test:
+	$(UV) run pytest tests/ -v

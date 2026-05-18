@@ -1,18 +1,42 @@
-"""Pydantic models used to validate input and output JSON files."""
-from typing import Dict, Optional, Union
+"""Pydantic models used to validate input and output JSON files.
+
+Extended for the bonus part to support nested / complex parameter types:
+- ``object`` parameters carry a ``properties`` dict of sub-schemas.
+- ``array`` parameters carry an ``items`` sub-schema.
+"""
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
-JsonValue = Union[str, float, int, bool]
+# A JSON leaf value (string, number, bool, or null-equivalent integer).
+JsonLeaf = Union[str, float, int, bool]
+# A JSON value may also be a nested dict or list.
+JsonValue = Union[JsonLeaf, Dict[str, Any], List[Any]]
 
 
 class ParameterSchema(BaseModel):
-    """Type schema attached to a single function parameter."""
+    """Type schema attached to a single function parameter.
+
+    Supports primitive types (``string``, ``number``, ``integer``,
+    ``boolean``) as well as:
+    - ``object`` — a nested JSON object described by ``properties``.
+    - ``array``  — a JSON array whose elements follow ``items``.
+    """
 
     model_config = ConfigDict(extra="ignore")
 
     type: str
+    # For type == "object": maps child parameter names to their schemas.
+    properties: Optional[Dict[str, ParameterSchema]] = None
+    # For type == "array": the schema of each element.
+    items: Optional[ParameterSchema] = None
+
+
+# Allow forward references (ParameterSchema references itself).
+ParameterSchema.model_rebuild()
 
 
 class FunctionDefinition(BaseModel):

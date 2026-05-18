@@ -9,8 +9,6 @@ import os
 import tempfile
 from typing import Any, Dict
 
-import pytest
-
 from src.tokenizer import BPETokenizer, _BYTE_ENC, _BYTE_DEC
 
 

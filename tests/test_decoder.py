@@ -6,8 +6,6 @@ generate_string_content) without loading a real LLM.
 from __future__ import annotations
 
 from typing import List
-from unittest.mock import MagicMock
-
 import pytest
 
 from src.decoder import ConstrainedDecoder
@@ -20,7 +18,7 @@ from tests.conftest import MockModel
 
 def _make_decoder(mock: MockModel) -> ConstrainedDecoder:
     """Create a ConstrainedDecoder backed by *mock* with caching disabled."""
-    return ConstrainedDecoder(mock, model_name="mock", use_cache=False)  # type: ignore[arg-type]
+    return ConstrainedDecoder(mock, model_name="mock", use_cache=False)
 
 
 # ---------------------------------------------------------------------------
@@ -86,8 +84,6 @@ class TestGenerateNumber:
         # One digit then immediately prefer terminator.
         calls: List[int] = []
 
-        original = mock_model.get_logits_from_input_ids
-
         def _logits_seq(ids: List[int]) -> List[float]:
             calls.append(len(ids))
             logits = [-10.0] * len(MockModel.VOCAB)
@@ -101,7 +97,7 @@ class TestGenerateNumber:
                 logits[6] = -5.0
             return logits
 
-        mock_model.get_logits_from_input_ids = _logits_seq  # type: ignore[method-assign]
+        mock_model.get_logits_from_input_ids = _logits_seq  # type: ignore[assignment]
         result = dec.generate_number([])
         assert result == "1"
 
@@ -137,7 +133,7 @@ class TestGenerateStringContent:
                 logits[10] = 5.0  # '"' closes
             return logits
 
-        mock_model.get_logits_from_input_ids = _seq  # type: ignore[method-assign]
+        mock_model.get_logits_from_input_ids = _seq  # type: ignore[assignment]
         result = dec.generate_string_content([])
         assert result == "a"
 

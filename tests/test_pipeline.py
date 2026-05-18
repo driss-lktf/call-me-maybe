@@ -7,12 +7,9 @@ from __future__ import annotations
 
 import json
 from typing import List
-from unittest.mock import patch
-
 import pytest
 
 from src.decoder import ConstrainedDecoder
-from src.pipeline import FunctionCallingPipeline
 from src.schemas import FunctionCall, FunctionDefinition, ParameterSchema
 from tests.conftest import MockModel
 
@@ -22,7 +19,7 @@ from tests.conftest import MockModel
 # ---------------------------------------------------------------------------
 
 def _decoder(mock: MockModel) -> ConstrainedDecoder:
-    return ConstrainedDecoder(mock, model_name="mock", use_cache=False)  # type: ignore[arg-type]
+    return ConstrainedDecoder(mock, model_name="mock", use_cache=False)
 
 
 # ---------------------------------------------------------------------------

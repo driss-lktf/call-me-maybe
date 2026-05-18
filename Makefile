@@ -3,6 +3,11 @@
 UV ?= $(shell which uv 2>/dev/null || echo /opt/pyenv/versions/3.11.15/bin/uv)
 SRC := src
 
+# Redirect large caches away from the small home partition
+export HF_HOME          ?= /goinfre/$(USER)/huggingface
+export UV_CACHE_DIR     ?= /goinfre/$(USER)/uv_cache
+export UV_LINK_MODE     ?= copy
+
 help:
 	@echo "Available targets:"
 	@echo "  install      - install project dependencies via uv sync"

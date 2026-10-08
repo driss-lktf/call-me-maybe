@@ -1,4 +1,4 @@
-*This project has been created as part of the 42 curriculum by zdrii.*
+*This project has been created as part of the 42 curriculum by dlaktaf.*
 
 # Call Me Maybe — Function calling for LLMs
 
@@ -407,7 +407,7 @@ Output file `data/output/function_calling_results.json` (illustrative):
 
 ### Use of AI
 
-AI assistance (Claude Opus, Anthropic) was used during the design and
+AI assistance (a large language model) was used during the design and
 implementation of the project for the following tasks:
 
 * Discussing the trade-offs of token-aligned versus character-aligned
